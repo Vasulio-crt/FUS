@@ -61,7 +61,7 @@ module.exports = async function handler(req, res) {
 		const fileBuffer = fs.readFileSync(file.filepath);
 
 		const blob = await put(uniqueName, fileBuffer, {
-			access: 'private',
+			access: 'public',
 			contentType: file.mimetype || 'application/octet-stream',
 		});
 
