@@ -17,11 +17,11 @@ module.exports = async function handler(req, res) {
 		const { blobs } = await list();
 
 		const files = blobs.map(blob => ({
-		name: blob.pathname,
-		size: blob.size,
-		path: blob.url,
-		url: blob.url,
-		uploaded: blob.uploadedAt,
+			name: blob.pathname,
+			size: blob.size,
+			path: blob.url,
+			url: blob.url,
+			uploaded: blob.uploadedAt,
 		}));
 
 		// Сортировка: новые сверху
