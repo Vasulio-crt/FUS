@@ -1,13 +1,5 @@
 {
 	"version": 2,
-	"builds": [{
-			"src": "api/**/*.js",
-			"use": "@vercel/node"
-		},{
-			"src": "public/**",
-			"use": "@vercel/static"
-		}
-	],
 	"routes": [{
 			"src": "/api/upload",
 			"dest": "/api/upload.js",
@@ -20,6 +12,10 @@
 			"src": "/api/delete/(.+)",
 			"dest": "/api/delete/[filename].js",
 			"methods": ["DELETE", "OPTIONS"]
+		},{
+			"src": "/api/download/(.+)",
+			"dest": "/api/download/[filename].js",
+			"methods": ["GET", "OPTIONS"]
 		},{
 			"src": "/uploads/(.*)",
 			"dest": "/api/files.js?download=$1",
