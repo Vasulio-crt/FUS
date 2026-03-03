@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Загрузка файлов</title>
+	<link rel="shortcut icon" href="favicon.svg">
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<div class="container">
+		<h1>📁 Загрузка файлов</h1>
+
+		<!-- Зона Drag & Drop -->
+		<div class="upload-zone" id="uploadZone">
+			<div class="upload-icon">☁️</div>
+			<p>Перетащите файлы сюда или нажмите для выбора</p>
+			<span class="hint">Максимальный размер: 50 MB</span>
+			<input type="file" id="fileInput" multiple>
+		</div>
+
+		<!-- Выбранные файлы -->
+		<div class="selected-files" id="selectedFiles">
+			<h3>📋 Выбранные файлы:</h3>
+			<div id="selectedList"></div>
+		</div>
+
+		<!-- Кнопка загрузки -->
+		<button class="upload-btn" id="uploadBtn" onclick="uploadFiles()">
+			⬆️ Загрузить файлы
+		</button>
+
+		<!-- Прогресс -->
+		<div class="progress-container" id="progressContainer">
+			<div class="progress-bar">
+				<div class="progress-fill" id="progressFill"></div>
+			</div>
+			<div class="progress-text" id="progressText">Загрузка...</div>
+		</div>
+
+		<!-- Список загруженных файлов -->
+		<div class="files-section">
+			<h2>📂 Загруженные файлы <span class="count" id="fileCount">0</span></h2>
+			<div class="files-list" id="filesList">
+				<div class="empty-state">Файлов пока нет</div>
+			</div>
+		</div>
+	</div>
+
+	<script src="script.js"></script>
+</body>
+</html>

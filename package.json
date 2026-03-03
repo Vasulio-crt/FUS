@@ -1,0 +1,18 @@
+{
+	"name": "file-upload-service",
+	"version": "1.0.0",
+	"private": true,
+	"description": "",
+	"license": "ISC",
+	"author": "",
+	"type": "commonjs",
+	"main": "server.js",
+	"scripts": {
+		"dev": "node server.js",
+		"start": "node server.js"
+	},
+	"dependencies": {
+		"formidable": "^3.5.1",
+		"express": "^4.18.2"
+	}
+}
