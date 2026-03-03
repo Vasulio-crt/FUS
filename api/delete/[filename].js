@@ -1,7 +1,4 @@
-const path = require('path');
-const fs = require('fs');
-
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const { del, list } = require('@vercel/blob');
 
 function setCors(res) {
 	res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,7 +6,7 @@ function setCors(res) {
 	res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-module.exports = function handler(req, res) {
+module.exports = async function handler(req, res) {
 	setCors(res);
 
 	if (req.method === 'OPTIONS') {
@@ -19,51 +16,54 @@ module.exports = function handler(req, res) {
 	if (req.method !== 'DELETE') {
 		return res.status(405).json({
 		success: false,
-		message: 'Используйте DELETE.'
+		message: 'Используйте DELETE.',
 		});
 	}
 
+	// Получаем имя файла
 	let filename = req.query?.filename;
-
-	if (!filename) {
-		const parts = req.url.split('/');
-		filename = decodeURIComponent(parts[parts.length - 1].split('?')[0]);
-	}
 
 	if (!filename && req.params?.filename) {
 		filename = req.params.filename;
 	}
 
 	if (!filename) {
-		return res.status(400).json({
-		success: false,
-		message: 'Укажите имя файла.'
-		});
+		const parts = req.url.split('/');
+		filename = decodeURIComponent(parts[parts.length - 1].split('?')[0]);
 	}
 
-	const safeName = path.basename(filename);
-	const filePath = path.join(UPLOADS_DIR, safeName);
-
-	if (!fs.existsSync(filePath)) {
-		return res.status(404).json({
+	if (!filename) {
+		return res.status(400).json({
 		success: false,
-		message: 'Файл не найден.'
+		message: 'Укажите имя файла.',
 		});
 	}
 
 	try {
-		fs.unlinkSync(filePath);
-		console.log(`🗑️ Удалён: ${safeName}`);
+		// Ищем blob по имени
+		const { blobs } = await list();
+		const blob = blobs.find(b => b.pathname === filename);
+
+		if (!blob) {
+		return res.status(404).json({
+			success: false,
+			message: 'Файл не найден.',
+		});
+		}
+
+		await del(blob.url);
+
+		console.log(`🗑️ Удалён: ${filename}`);
 
 		return res.status(200).json({
 		success: true,
-		message: `Файл '${safeName}' удалён.`
+		message: `Файл '${filename}' удалён.`,
 		});
 	} catch (err) {
 		console.error('Ошибка удаления:', err);
 		return res.status(500).json({
 		success: false,
-		message: 'Ошибка удаления файла.'
+		message: `Ошибка: ${err.message}`,
 		});
 	}
 };

@@ -11,7 +11,6 @@
 	<div class="container">
 		<h1>📁 Загрузка файлов</h1>
 
-		<!-- Зона Drag & Drop -->
 		<div class="upload-zone" id="uploadZone">
 			<div class="upload-icon">☁️</div>
 			<p>Перетащите файлы сюда или нажмите для выбора</p>
@@ -19,26 +18,18 @@
 			<input type="file" id="fileInput" multiple>
 		</div>
 
-		<!-- Выбранные файлы -->
 		<div class="selected-files" id="selectedFiles">
 			<h3>📋 Выбранные файлы:</h3>
 			<div id="selectedList"></div>
 		</div>
 
-		<!-- Кнопка загрузки -->
-		<button class="upload-btn" id="uploadBtn" onclick="uploadFiles()">
-			⬆️ Загрузить файлы
-		</button>
+		<button class="upload-btn" id="uploadBtn" onclick="uploadFiles()">⬆️ Загрузить файлы</button>
 
-		<!-- Прогресс -->
 		<div class="progress-container" id="progressContainer">
-			<div class="progress-bar">
-				<div class="progress-fill" id="progressFill"></div>
-			</div>
+			<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 			<div class="progress-text" id="progressText">Загрузка...</div>
 		</div>
 
-		<!-- Список загруженных файлов -->
 		<div class="files-section">
 			<h2>📂 Загруженные файлы <span class="count" id="fileCount">0</span></h2>
 			<div class="files-list" id="filesList">
