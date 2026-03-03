@@ -28,10 +28,5 @@
 			"src": "/(.*)",
 			"dest": "/public/$1"
 		}
-	],
-	"functions": {
-		"api/**/*.js": {
-			"maxDuration": 30
-		}
-	}
+	]
 }
