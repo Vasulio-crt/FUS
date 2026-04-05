@@ -9,17 +9,13 @@
 			"dest": "/api/files.js",
 			"methods": ["GET", "OPTIONS"]
 		},{
-			"src": "/api/delete/(.+)",
-			"dest": "/api/delete/[filename].js",
-			"methods": ["DELETE", "OPTIONS"]
-		},{
 			"src": "/api/download/(.+)",
 			"dest": "/api/download/[filename].js",
 			"methods": ["GET", "OPTIONS"]
 		},{
-			"src": "/uploads/(.*)",
-			"dest": "/api/files.js?download=$1",
-			"methods": ["GET"]
+			"src": "/api/delete/(.+)",
+			"dest": "/api/delete/[filename].js",
+			"methods": ["DELETE", "OPTIONS"]
 		},{
 			"src": "/(.*)",
 			"dest": "/public/$1"

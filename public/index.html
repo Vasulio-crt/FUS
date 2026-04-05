@@ -9,12 +9,12 @@
 </head>
 <body>
 	<div class="container">
-		<h1>📁 Загрузка файлов</h1>
+		<h1>📁 Загрузка файлов на Google Drive</h1>
 
 		<div class="upload-zone" id="uploadZone">
 			<div class="upload-icon">☁️</div>
 			<p>Перетащите файлы сюда или нажмите для выбора</p>
-			<span class="hint">Максимальный размер: 50 MB</span>
+			<span class="hint">Максимальный размер: 100 MB</span>
 			<input type="file" id="fileInput" multiple>
 		</div>
 
@@ -31,9 +31,32 @@
 		</div>
 
 		<div class="files-section">
-			<h2>📂 Загруженные файлы <span class="count" id="fileCount">0</span></h2>
+			<div class="files-header">
+				<h2>📂 Загруженные файлы <span class="count" id="fileCount">0</span></h2>
+				<div style="display: flex; align-items: center; gap: 12px;">
+					<div class="cache-info" id="cacheInfo"></div>
+					<button class="btn-refresh" id="refreshBtn" onclick="forceRefresh()">🔄</button>
+				</div>
+			</div>
 			<div class="files-list" id="filesList">
-				<div class="empty-state">Файлов пока нет</div>
+				<div class="empty-state">Загрузка...</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal-overlay" id="passwordModal">
+		<div class="modal">
+			<h3>🔐 Требуется пароль</h3>
+			<p>Для удаления файла "<span id="deleteFileName"></span>" введите пароль администратора.</p>
+			<input type="password" id="deletePassword" placeholder="Введите пароль" autocomplete="off">
+			<div class="modal-error" id="modalError">Неверный пароль</div>
+			<div class="remember-password">
+				<input type="checkbox" id="rememberPassword">
+				<label for="rememberPassword">Запомнить пароль на 1 час</label>
+			</div>
+			<div class="modal-buttons">
+				<button class="btn-cancel" onclick="closePasswordModal()">Отмена</button>
+				<button class="btn-confirm" id="confirmDeleteBtn" onclick="confirmDelete()">Удалить</button>
 			</div>
 		</div>
 	</div>

@@ -1,10 +1,8 @@
-const { del, list } = require('@vercel/blob');
+require('dotenv').config();
 
-function setCors(res) {
-	res.setHeader('Access-Control-Allow-Origin', '*');
-	res.setHeader('Access-Control-Allow-Methods', 'DELETE, OPTIONS');
-	res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+const { findFileByName, deleteFile } = require('../../lib/google-drive');
+const { invalidateFilesCache, removeFileContent } = require('../../lib/cache');
+const { setCors, verifyDeletePassword } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
 	setCors(res);
@@ -15,18 +13,32 @@ module.exports = async function handler(req, res) {
 
 	if (req.method !== 'DELETE') {
 		return res.status(405).json({
-		success: false,
-		message: 'Используйте DELETE.',
+			success: false,
+			message: 'Используйте DELETE.',
+		});
+	}
+
+	// Проверяем пароль
+	const password = req.headers['x-delete-password'] || req.query?.password;
+
+	if (!password) {
+		return res.status(401).json({
+			success: false,
+			message: 'Требуется пароль для удаления.',
+			requiresPassword: true,
+		});
+	}
+
+	if (!verifyDeletePassword(password)) {
+		return res.status(403).json({
+			success: false,
+			message: 'Неверный пароль.',
 		});
 	}
 
 	// Получаем имя файла
 	let filename = req.query?.filename;
-
-	if (!filename && req.params?.filename) {
-		filename = req.params.filename;
-	}
-
+	if (!filename && req.params?.filename) filename = req.params.filename;
 	if (!filename) {
 		const parts = req.url.split('/');
 		filename = decodeURIComponent(parts[parts.length - 1].split('?')[0]);
@@ -34,36 +46,42 @@ module.exports = async function handler(req, res) {
 
 	if (!filename) {
 		return res.status(400).json({
-		success: false,
-		message: 'Укажите имя файла.',
+			success: false,
+			message: 'Укажите имя файла.',
 		});
 	}
 
 	try {
-		// Ищем blob по имени
-		const { blobs } = await list();
-		const blob = blobs.find(b => b.pathname === filename);
+		// Ищем файл
+		const file = await findFileByName(filename);
 
-		if (!blob) {
-		return res.status(404).json({
-			success: false,
-			message: 'Файл не найден.',
-		});
+		if (!file) {
+			return res.status(404).json({
+				success: false,
+				message: 'Файл не найден.',
+			});
 		}
 
-		await del(blob.url);
+		// Удаляем из Google Drive
+		await deleteFile(file.id);
 
-		console.log(`🗑️ Удалён: ${filename}`);
+		// Удаляем из кэша содержимого
+		removeFileContent(file.id);
+
+		// Сбрасываем кэш списка файлов
+		invalidateFilesCache();
+
+		console.log(`XX Удалён: ${filename}`);
 
 		return res.status(200).json({
-		success: true,
-		message: `Файл '${filename}' удалён.`,
+			success: true,
+			message: `Файл '${filename}' удалён.`,
 		});
 	} catch (err) {
 		console.error('Ошибка удаления:', err);
 		return res.status(500).json({
-		success: false,
-		message: `Ошибка: ${err.message}`,
+			success: false,
+			message: `Ошибка: ${err.message}`,
 		});
 	}
 };

@@ -1,13 +1,11 @@
-const { put } = require('@vercel/blob');
+require('dotenv').config();
+
 const { IncomingForm } = require('formidable');
 const fs = require('fs');
 const path = require('path');
-
-function setCors(res) {
-	res.setHeader('Access-Control-Allow-Origin', '*');
-	res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-	res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+const { uploadFile } = require('../lib/google-drive');
+const { invalidateFilesCache } = require('../lib/cache');
+const { setCors } = require('../lib/auth');
 
 function sanitize(name) {
 	return path.basename(name)
@@ -33,7 +31,7 @@ module.exports = async function handler(req, res) {
 	if (req.method !== 'POST') {
 		return res.status(405).json({
 		success: false,
-		message: 'Используйте POST.'
+		message: 'Используйте POST.',
 		});
 	}
 
@@ -44,7 +42,7 @@ module.exports = async function handler(req, res) {
 		if (!uploaded) {
 		return res.status(400).json({
 			success: false,
-			message: "Файлы не найдены. Используйте поле 'files'."
+			message: "Файлы не найдены. Используйте поле 'files'.",
 		});
 		}
 
@@ -57,26 +55,29 @@ module.exports = async function handler(req, res) {
 		for (const file of uploaded) {
 		const safeName = sanitize(file.originalFilename || file.newFilename);
 		const uniqueName = makeUnique(safeName);
-
 		const fileBuffer = fs.readFileSync(file.filepath);
 
-		const blob = await put(uniqueName, fileBuffer, {
-			access: 'public',
-			contentType: file.mimetype || 'application/octet-stream',
-		});
+		const driveFile = await uploadFile(
+			uniqueName,
+			fileBuffer,
+			file.mimetype || 'application/octet-stream'
+		);
 
 		// Удаляем временный файл
 		try { fs.unlinkSync(file.filepath); } catch {}
 
 		results.push({
-			name: uniqueName,
-			size: file.size,
-			path: blob.url,
-			url: blob.url,
+			id: driveFile.id,
+			name: driveFile.name,
+			size: parseInt(driveFile.size) || file.size,
+			mimeType: driveFile.mimeType,
 		});
 
-		console.log(`✅ Загружен в Blob: ${uniqueName}`);
+		console.log(`-> Загружен в Google Drive: ${uniqueName}`);
 		}
+
+		// Сбрасываем кэш списка файлов
+		invalidateFilesCache();
 
 		return res.status(200).json({
 		success: true,
@@ -96,10 +97,9 @@ function parseForm(req) {
 	return new Promise((resolve, reject) => {
 		const form = new IncomingForm({
 		multiples: true,
-		maxFileSize: 50 * 1024 * 1024,
+		maxFileSize: 100 * 1024 * 1024, // 100 MB
 		keepExtensions: true,
 		});
-
 		form.parse(req, (err, fields, files) => {
 		if (err) reject(err);
 		else resolve({ fields, files });
@@ -108,7 +108,5 @@ function parseForm(req) {
 }
 
 module.exports.config = {
-	api: {
-		bodyParser: false,
-	},
+	api: { bodyParser: false },
 };
