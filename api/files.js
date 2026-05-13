@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const { listFiles } = require('../lib/google-drive');
-const { getFilesCache, setFilesCache, getFilesCacheVersion, getFileContentCacheStats } = require('../lib/cache');
+const { getFilesCache, setFilesCache, getFilesCacheETag, getFileContentCacheStats } = require('../lib/cache');
 const { setCors } = require('../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -14,32 +14,31 @@ module.exports = async function handler(req, res) {
 	try {
 		// Проверяем кэш
 		const cached = getFilesCache();
-		const clientVersion = parseInt(req.query?.version) || 0;
-		const currentVersion = getFilesCacheVersion();
 
-		// Если клиент уже имеет актуальную версию
-		if (clientVersion === currentVersion && cached) {
-			return res.status(200).json({
-				success: true,
-				message: 'Данные не изменились',
-				data: [],
-				version: currentVersion,
-				cached: true,
-				noChange: true,
-			});
+		// ETag клиента
+		const clientEtag = req.headers['if-none-match'];
+
+		// Если кэш валиден и ETag совпадает
+		if (cached && clientEtag && clientEtag === cached.etag) {
+			res.status(304).end();
+			return;
 		}
 
-		// Если есть кэш — отдаём его
+		// Если кэш валиден — отдаём его
 		if (cached) {
 			const cacheStats = getFileContentCacheStats();
+
+			res.setHeader('ETag', cached.etag);
+			res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
+			res.setHeader('X-Cache', 'HIT');
+			res.setHeader('X-Cache-Age', Math.round(cached.age / 1000) + 's');
 
 			return res.status(200).json({
 				success: true,
 				message: `Найдено файлов: ${cached.data.length}`,
 				data: cached.data,
-				version: currentVersion,
 				cached: true,
-				cacheAge: Date.now() - cached.timestamp,
+				cacheAge: cached.age,
 				fileContentCache: cacheStats,
 			});
 		}
@@ -57,18 +56,24 @@ module.exports = async function handler(req, res) {
 
 		// Сохраняем в кэш
 		setFilesCache(files);
-		const cacheStats = getFileContentCacheStats();
 
-		console.log(`Загружен список файлов: ${files.length} файлов`);
+		const cacheStats = getFileContentCacheStats();
+		const etag = getFilesCacheETag();
+
+		res.setHeader('ETag', etag);
+		res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
+		res.setHeader('X-Cache', 'MISS');
+
+		console.log(`📋 Загружен список файлов: ${files.length} файлов`);
 
 		return res.status(200).json({
 			success: true,
 			message: `Найдено файлов: ${files.length}`,
 			data: files,
-			version: getFilesCacheVersion(),
 			cached: false,
 			fileContentCache: cacheStats,
 		});
+
 	} catch (err) {
 		console.error('Ошибка получения списка:', err);
 		return res.status(500).json({

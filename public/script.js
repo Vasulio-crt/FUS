@@ -1,10 +1,9 @@
 // ========== СОСТОЯНИЕ ==========
 let selectedFilesList = [];
-let cachedVersion = 0;
-let cachedFiles = [];
-let cachedFileIds = new Set();
 let pendingDeleteFile = null;
 let isUploading = false;
+let filesETag = null;
+let duplicateResolutions = {}; // Решения для дубликатов
 
 // ========== ПАРОЛЬ ==========
 function getSavedPassword() {
@@ -107,7 +106,13 @@ async function uploadFiles() {
 
 	isUploading = true;
 	const formData = new FormData();
+
 	selectedFilesList.forEach(file => formData.append('files', file));
+
+	// Добавляем решения по дубликатам
+	if (Object.keys(duplicateResolutions).length > 0) {
+		formData.append('duplicateActions', JSON.stringify(duplicateResolutions));
+	}
 
 	const progressContainer = document.getElementById('progressContainer');
 	const progressFill = document.getElementById('progressFill');
@@ -118,45 +123,40 @@ async function uploadFiles() {
 	uploadBtn.innerHTML = '<span class="loading-spinner"></span>Загрузка...';
 
 	try {
-		await new Promise((resolve, reject) => {
-			const xhr = new XMLHttpRequest();
-
-			xhr.upload.addEventListener('progress', e => {
-				if (e.lengthComputable) {
-					const pct = Math.round((e.loaded / e.total) * 100);
-					progressFill.style.width = pct + '%';
-					progressText.textContent = `${pct}% • ${formatSize(e.loaded)} / ${formatSize(e.total)}`;
-				}
-			});
-
-			xhr.onload = () => {
-				try {
-					const result = JSON.parse(xhr.responseText);
-					if (xhr.status === 200 && result.success) {
-						showToast(result.message, 'success');
-						resolve();
-					} else {
-						reject(new Error(result.message || 'Ошибка сервера'));
-					}
-				} catch {
-					reject(new Error('Ошибка ответа сервера'));
-				}
-			};
-
-			xhr.onerror = () => reject(new Error('Ошибка сети'));
-			xhr.open('POST', '/api/upload');
-			xhr.send(formData);
+		const response = await fetch('/api/upload', {
+			method: 'POST',
+			body: formData,
 		});
+
+		const result = await response.json();
+
+		// 409 Conflict — есть дубликаты
+		if (response.status === 409 && result.requiresConfirmation) {
+			progressContainer.style.display = 'none';
+			uploadBtn.disabled = false;
+			uploadBtn.innerHTML = '⬆️ Загрузить';
+			isUploading = false;
+
+			// Показываем диалог с дубликатами
+			await handleDuplicates(result.duplicates);
+			return;
+		}
+
+		if (!response.ok || !result.success) {
+			throw new Error(result.message || 'Ошибка загрузки');
+		}
+
+		showToast(result.message, 'success');
 
 		// Сброс
 		selectedFilesList = [];
 		selectedFilesDiv.style.display = 'none';
 		uploadBtn.style.display = 'none';
 		fileInput.value = '';
+		duplicateResolutions = {};
 
 		// Обновляем список
-		cachedVersion = 0;
-		loadFiles();
+		loadFiles(true);
 
 	} catch (err) {
 		showToast(err.message, 'error');
@@ -172,62 +172,127 @@ async function uploadFiles() {
 	}
 }
 
-// ========== СПИСОК ФАЙЛОВ ==========
-async function loadFiles() {
+// ========== ОБРАБОТКА ДУБЛИКАТОВ ==========
+async function handleDuplicates(duplicates) {
+	return new Promise((resolve) => {
+		const modal = document.createElement('div');
+		modal.className = 'modal-overlay active';
+		modal.innerHTML = `
+			<div class="modal duplicate-modal" onclick="event.stopPropagation()">
+				<div class="modal-handle"></div>
+				<h3>⚠️ Найдены дубликаты</h3>
+				<p>Следующие файлы уже существуют. Выберите действие для каждого:</p>
+				
+				<div class="duplicates-list" id="duplicatesList"></div>
+				
+				<div class="modal-buttons">
+					<button class="btn-cancel" onclick="closeDuplicateModal(false)">Отменить загрузку</button>
+					<button class="btn-confirm" onclick="closeDuplicateModal(true)">Продолжить</button>
+				</div>
+			</div>
+		`;
+
+		document.body.appendChild(modal);
+		document.body.style.overflow = 'hidden';
+
+		const list = document.getElementById('duplicatesList');
+		list.innerHTML = duplicates.map(dup => `
+			<div class="duplicate-item">
+				<div class="duplicate-info">
+					<div class="duplicate-name">${getFileIcon(dup.name)} ${escapeHtml(dup.name)}</div>
+					<div class="duplicate-meta">
+						Существующий: ${formatSize(dup.existingSize)} → Новый: ${formatSize(dup.size)}
+					</div>
+				</div>
+				<select class="duplicate-action" data-filename="${escapeHtml(dup.name)}">
+					<option value="replace">🔄 Перезаписать</option>
+					<option value="keep_both" selected>➕ Сохранить оба</option>
+					<option value="skip">⏭️ Пропустить</option>
+				</select>
+			</div>
+		`).join('');
+
+		window.closeDuplicateModal = (confirmed) => {
+			if (confirmed) {
+				// Собираем решения
+				duplicateResolutions = {};
+				document.querySelectorAll('.duplicate-action').forEach(select => {
+					const filename = select.dataset.filename;
+					duplicateResolutions[filename] = select.value;
+				});
+
+				// Перезапускаем загрузку с решениями
+				modal.remove();
+				document.body.style.overflow = '';
+				uploadFiles();
+			} else {
+				// Отмена
+				modal.remove();
+				document.body.style.overflow = '';
+				duplicateResolutions = {};
+				showToast('Загрузка отменена', 'error');
+			}
+			resolve();
+		};
+	});
+}
+
+// ========== СПИСОК ФАЙЛОВ С ETAG ==========
+async function loadFiles(forceRefresh = false) {
 	const refreshBtn = document.getElementById('refreshBtn');
 	refreshBtn.disabled = true;
 
 	try {
-		const res = await fetch(`/api/files?version=${cachedVersion}`);
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		const headers = {};
 
-		const data = await res.json();
+		// Добавляем ETag для проверки
+		if (filesETag && !forceRefresh) {
+			headers['If-None-Match'] = filesETag;
+		}
 
-		if (data.noChange && cachedFiles.length > 0) {
-			updateCacheInfo('Актуально', true);
+		const res = await fetch('/api/files', { headers });
+
+		// 304 Not Modified
+		if (res.status === 304) {
+			updateCacheInfo('Не изменилось', true);
 			refreshBtn.disabled = false;
 			return;
 		}
 
-		cachedVersion = data.version || 0;
-		cachedFiles = data.data || [];
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-		if (data.fileContentCache) {
-			cachedFileIds = new Set(data.fileContentCache.files.map(f => f.filename));
-		}
+		const data = await res.json();
 
-		updateCacheInfo(data.cached ? 'Кэш' : 'Обновлено', data.cached);
-		renderFiles(cachedFiles);
+		// Сохраняем ETag
+		filesETag = res.headers.get('ETag');
+
+		const files = data.data || [];
+		const cachedFileIds = new Set(
+			(data.fileContentCache?.files || []).map(f => f.filename)
+		);
+
+		const cacheStatus = res.headers.get('X-Cache') || 'UNKNOWN';
+		const cacheAge = res.headers.get('X-Cache-Age');
+
+		let statusText = cacheStatus === 'HIT' ? `Кэш (${cacheAge})` : 'Обновлено';
+		updateCacheInfo(statusText, cacheStatus === 'HIT');
+
+		renderFiles(files, cachedFileIds);
 
 	} catch (err) {
 		console.error('Ошибка:', err);
 		updateCacheInfo('Ошибка', false);
-
-		if (cachedFiles.length === 0) {
-			document.getElementById('filesList').innerHTML = `
-				<div class="empty-state">
-					<div class="empty-icon">⚠️</div>
-					<div>Не удалось загрузить</div>
-				</div>
-			`;
-		}
 	} finally {
 		refreshBtn.disabled = false;
 	}
 }
 
 function forceRefresh() {
-	cachedVersion = 0;
-	loadFiles();
+	filesETag = null;
+	loadFiles(true);
 }
 
-function updateCacheInfo(text, isCached) {
-	document.getElementById('cacheInfo').innerHTML = `
-		<span class="cache-badge ${isCached ? '' : 'miss'}">${text}</span>
-	`;
-}
-
-function renderFiles(files) {
+function renderFiles(files, cachedFileIds) {
 	document.getElementById('fileCount').textContent = files.length;
 	const filesList = document.getElementById('filesList');
 
@@ -261,14 +326,10 @@ function renderFiles(files) {
 				<div class="file-actions">
 					<a href="/api/download/${encodeURIComponent(file.name)}" 
 						class="btn-small btn-download" 
-						aria-label="Скачать">
-						⬇️
-					</a>
+						aria-label="Скачать">⬇️</a>
 					<button class="btn-small btn-delete" 
 							onclick="requestDelete('${safeNameAttr}')"
-							aria-label="Удалить">
-						🗑️
-					</button>
+							aria-label="Удалить">🗑️</button>
 				</div>
 			</div>
 		`;
@@ -481,7 +542,5 @@ loadFiles();
 
 // Обновляем при возврате на вкладку
 document.addEventListener('visibilitychange', () => {
-	if (!document.hidden) {
-		loadFiles();
-	}
+	if (!document.hidden) loadFiles();
 });
