@@ -3,8 +3,8 @@ require('dotenv').config();
 const { IncomingForm } = require('formidable');
 const fs = require('fs');
 const path = require('path');
-const { uploadFile, findFileByName, deleteFile } = require('../lib/google-drive');
-const { invalidateFilesCache } = require('../lib/cache');
+const { uploadFile, findFileByName, deleteFile, listFiles } = require('../lib/google-drive');
+const { setFilesCache, invalidateFilesCache } = require('../lib/cache');
 const { setCors } = require('../lib/auth');
 
 function sanitize(name) {
@@ -143,8 +143,22 @@ module.exports = async function handler(req, res) {
 			try { fs.unlinkSync(file.filepath); } catch (e) {}
 		}
 
-		// Инвалидируем кэш (версия увеличится)
-		invalidateFilesCache();
+		// ✅ ПЕРЕЗАГРУЖАЕМ КЭШ НЕМЕДЛЕННО
+		try {
+			const driveFiles = await listFiles();
+			const files = driveFiles.map(file => ({
+				id: file.id,
+				name: file.name,
+				size: parseInt(file.size) || 0,
+				mimeType: file.mimeType,
+				uploaded: file.createdTime,
+			}));
+			setFilesCache(files);
+			console.log(`🔄 Кэш обновлён после загрузки: ${files.length} файлов`);
+		} catch (e) {
+			console.error('Ошибка обновления кэша:', e);
+			invalidateFilesCache();
+		}
 
 		return res.status(200).json({
 			success: true,

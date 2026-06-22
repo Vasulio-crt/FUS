@@ -140,7 +140,6 @@ async function uploadFiles() {
 
 		const result = JSON.parse(response.responseText);
 
-		// 409 Conflict — дубликаты
 		if (response.status === 409 && result.requiresConfirmation) {
 			progressContainer.style.display = 'none';
 			uploadBtn.disabled = false;
@@ -163,7 +162,7 @@ async function uploadFiles() {
 		fileInput.value = '';
 		duplicateResolutions = {};
 
-		// НЕМЕДЛЕННО обновляем список
+		currentVersion = 0;
 		await loadFiles(true);
 
 	} catch (err) {
@@ -445,7 +444,7 @@ async function executeDelete(filename, password) {
 
 		showToast(data.message, 'success');
 
-		// НЕМЕДЛЕННО обновляем список
+		currentVersion = 0;
 		await loadFiles(true);
 		return true;
 

@@ -1,7 +1,7 @@
 require('dotenv').config();
 
-const { findFileByName, deleteFile } = require('../../lib/google-drive');
-const { invalidateFilesCache, removeFileContent } = require('../../lib/cache');
+const { findFileByName, deleteFile, listFiles } = require('../../lib/google-drive');
+const { setFilesCache, invalidateFilesCache, removeFileContent } = require('../../lib/cache');
 const { setCors, verifyDeletePassword } = require('../../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -61,11 +61,27 @@ module.exports = async function handler(req, res) {
 
 		await deleteFile(file.id);
 
+		// Удаляем из кэша содержимого
 		removeFileContent(file.id);
 
-		invalidateFilesCache();
-
 		console.log(`🗑️ Удалён: ${filename}`);
+
+		// ✅ ПЕРЕЗАГРУЖАЕМ КЭШ НЕМЕДЛЕННО
+		try {
+			const driveFiles = await listFiles();
+			const files = driveFiles.map(f => ({
+				id: f.id,
+				name: f.name,
+				size: parseInt(f.size) || 0,
+				mimeType: f.mimeType,
+				uploaded: f.createdTime,
+			}));
+			setFilesCache(files);
+			console.log(`🔄 Кэш обновлён после удаления: ${files.length} файлов`);
+		} catch (e) {
+			console.error('Ошибка обновления кэша:', e);
+			invalidateFilesCache();
+		}
 
 		return res.status(200).json({
 			success: true,
