@@ -18,7 +18,6 @@ module.exports = async function handler(req, res) {
 		});
 	}
 
-	// Проверяем пароль
 	const password = req.headers['x-delete-password'] || req.query?.password;
 
 	if (!password) {
@@ -36,7 +35,6 @@ module.exports = async function handler(req, res) {
 		});
 	}
 
-	// Получаем имя файла
 	let filename = req.query?.filename;
 	if (!filename && req.params?.filename) filename = req.params.filename;
 	if (!filename) {
@@ -52,7 +50,6 @@ module.exports = async function handler(req, res) {
 	}
 
 	try {
-		// Ищем файл
 		const file = await findFileByName(filename);
 
 		if (!file) {
@@ -62,21 +59,19 @@ module.exports = async function handler(req, res) {
 			});
 		}
 
-		// Удаляем из Google Drive
 		await deleteFile(file.id);
 
-		// Удаляем из кэша содержимого
 		removeFileContent(file.id);
 
-		// Сбрасываем кэш списка файлов
 		invalidateFilesCache();
 
-		console.log(`XX Удалён: ${filename}`);
+		console.log(`🗑️ Удалён: ${filename}`);
 
 		return res.status(200).json({
 			success: true,
 			message: `Файл '${filename}' удалён.`,
 		});
+
 	} catch (err) {
 		console.error('Ошибка удаления:', err);
 		return res.status(500).json({

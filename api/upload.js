@@ -50,7 +50,7 @@ module.exports = async function handler(req, res) {
 			uploaded = [uploaded];
 		}
 
-		// Парсим действия для дубликатов (из формы)
+		// Парсим действия для дубликатов
 		const duplicateActions = {};
 		if (fields.duplicateActions) {
 			try {
@@ -66,7 +66,7 @@ module.exports = async function handler(req, res) {
 		const results = [];
 		const duplicates = [];
 
-		// Первый проход: проверяем дубликаты
+		// Проверяем дубликаты
 		for (const file of uploaded) {
 			const safeName = sanitize(file.originalFilename || file.newFilename);
 			const existing = await findFileByName(safeName);
@@ -75,7 +75,6 @@ module.exports = async function handler(req, res) {
 				const action = duplicateActions[safeName];
 
 				if (!action || action === 'ask') {
-					// Нет решения — добавляем в список дубликатов
 					duplicates.push({
 						name: safeName,
 						size: file.size,
@@ -86,24 +85,21 @@ module.exports = async function handler(req, res) {
 			}
 		}
 
-		// Если есть нерешённые дубликаты — возвращаем их для подтверждения
+		// Если есть нерешённые дубликаты
 		if (duplicates.length > 0) {
-			// Удаляем временные файлы
 			for (const file of uploaded) {
-				try {
-					fs.unlinkSync(file.filepath);
-				} catch (e) {}
+				try { fs.unlinkSync(file.filepath); } catch (e) {}
 			}
 
 			return res.status(409).json({
 				success: false,
 				requiresConfirmation: true,
 				duplicates,
-				message: `Найдено ${duplicates.length} дубликатов. Требуется подтверждение.`,
+				message: `Найдено ${duplicates.length} дубликатов.`,
 			});
 		}
 
-		// Второй проход: загружаем файлы с учётом решений
+		// Загружаем файлы
 		for (const file of uploaded) {
 			const safeName = sanitize(file.originalFilename || file.newFilename);
 			const action = duplicateActions[safeName];
@@ -112,20 +108,16 @@ module.exports = async function handler(req, res) {
 			let finalName = safeName;
 			let shouldUpload = true;
 
-			// Проверяем дубликат снова
 			const existing = await findFileByName(safeName);
 
 			if (existing) {
 				if (action === 'replace') {
-					// Удаляем старый файл
 					await deleteFile(existing.id);
 					console.log(`🔄 Перезаписан: ${safeName}`);
 				} else if (action === 'keep_both') {
-					// Добавляем уникальный код
 					finalName = makeUnique(safeName);
 					console.log(`➕ Создан дубликат: ${finalName}`);
 				} else if (action === 'skip') {
-					// Пропускаем
 					shouldUpload = false;
 					console.log(`⏭️ Пропущен: ${safeName}`);
 				}
@@ -143,19 +135,15 @@ module.exports = async function handler(req, res) {
 					name: driveFile.name,
 					size: parseInt(driveFile.size) || file.size,
 					mimeType: driveFile.mimeType,
-					action: existing ? action : 'new',
 				});
 
 				console.log(`✅ Загружен: ${finalName}`);
 			}
 
-			// Удаляем временный файл
-			try {
-				fs.unlinkSync(file.filepath);
-			} catch (e) {}
+			try { fs.unlinkSync(file.filepath); } catch (e) {}
 		}
 
-		// Сбрасываем кэш
+		// Инвалидируем кэш (версия увеличится)
 		invalidateFilesCache();
 
 		return res.status(200).json({

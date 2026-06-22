@@ -1,7 +1,12 @@
 require('dotenv').config();
 
 const { listFiles } = require('../lib/google-drive');
-const { getFilesCache, setFilesCache, getFilesCacheETag, getFileContentCacheStats } = require('../lib/cache');
+const { 
+	getFilesCache, 
+	setFilesCache, 
+	getFilesCacheVersion,
+	getFileContentCacheStats 
+} = require('../lib/cache');
 const { setCors } = require('../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -12,38 +17,37 @@ module.exports = async function handler(req, res) {
 	}
 
 	try {
+		const clientVersion = parseInt(req.query?.version) || 0;
+		const currentVersion = getFilesCacheVersion();
+
 		// Проверяем кэш
 		const cached = getFilesCache();
 
-		// ETag клиента
-		const clientEtag = req.headers['if-none-match'];
-
-		// Если кэш валиден и ETag совпадает
-		if (cached && clientEtag && clientEtag === cached.etag) {
-			res.status(304).end();
-			return;
+		// Если версии совпадают — данные не изменились
+		if (cached && clientVersion === currentVersion && clientVersion > 0) {
+			return res.status(200).json({
+				success: true,
+				noChange: true,
+				version: currentVersion,
+				message: 'Данные актуальны',
+			});
 		}
 
-		// Если кэш валиден — отдаём его
+		// Если есть кэш — отдаём его
 		if (cached) {
-			const cacheStats = getFileContentCacheStats();
-
-			res.setHeader('ETag', cached.etag);
-			res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
-			res.setHeader('X-Cache', 'HIT');
-			res.setHeader('X-Cache-Age', Math.round(cached.age / 1000) + 's');
+			const stats = getFileContentCacheStats();
 
 			return res.status(200).json({
 				success: true,
 				message: `Найдено файлов: ${cached.data.length}`,
 				data: cached.data,
+				version: currentVersion,
 				cached: true,
-				cacheAge: cached.age,
-				fileContentCache: cacheStats,
+				fileContentCache: stats,
 			});
 		}
 
-		// Запрашиваем из Google Drive
+		// Нет кэша — загружаем из Google Drive
 		const driveFiles = await listFiles();
 
 		const files = driveFiles.map(file => ({
@@ -57,21 +61,17 @@ module.exports = async function handler(req, res) {
 		// Сохраняем в кэш
 		setFilesCache(files);
 
-		const cacheStats = getFileContentCacheStats();
-		const etag = getFilesCacheETag();
+		const stats = getFileContentCacheStats();
 
-		res.setHeader('ETag', etag);
-		res.setHeader('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
-		res.setHeader('X-Cache', 'MISS');
-
-		console.log(`📋 Загружен список файлов: ${files.length} файлов`);
+		console.log(`📋 Загружен список: ${files.length} файлов`);
 
 		return res.status(200).json({
 			success: true,
 			message: `Найдено файлов: ${files.length}`,
 			data: files,
+			version: getFilesCacheVersion(),
 			cached: false,
-			fileContentCache: cacheStats,
+			fileContentCache: stats,
 		});
 
 	} catch (err) {
