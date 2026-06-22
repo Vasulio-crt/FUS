@@ -4,7 +4,6 @@ let pendingDeleteFile = null;
 let isUploading = false;
 let currentVersion = 0;
 let duplicateResolutions = {};
-let pollingInterval = null;
 
 // ========== ПАРОЛЬ ==========
 function getSavedPassword() {
@@ -140,6 +139,7 @@ async function uploadFiles() {
 
 		const result = JSON.parse(response.responseText);
 
+		// 409 Conflict — дубликаты
 		if (response.status === 409 && result.requiresConfirmation) {
 			progressContainer.style.display = 'none';
 			uploadBtn.disabled = false;
@@ -162,6 +162,7 @@ async function uploadFiles() {
 		fileInput.value = '';
 		duplicateResolutions = {};
 
+		// Обновляем список
 		currentVersion = 0;
 		await loadFiles(true);
 
@@ -303,6 +304,7 @@ async function loadFiles(force = false) {
 }
 
 function forceRefresh() {
+	currentVersion = 0;
 	loadFiles(true);
 }
 
@@ -444,6 +446,7 @@ async function executeDelete(filename, password) {
 
 		showToast(data.message, 'success');
 
+		// Обновляем список
 		currentVersion = 0;
 		await loadFiles(true);
 		return true;
@@ -470,23 +473,6 @@ document.addEventListener('keydown', e => {
 	}
 });
 
-// ========== POLLING (проверка обновлений) ==========
-function startPolling() {
-	// Проверяем обновления каждые 3 секунды
-	pollingInterval = setInterval(() => {
-		if (!document.hidden && !isUploading) {
-			loadFiles();
-		}
-	}, 3000);
-}
-
-function stopPolling() {
-	if (pollingInterval) {
-		clearInterval(pollingInterval);
-		pollingInterval = null;
-	}
-}
-
 // ========== УТИЛИТЫ ==========
 function formatSize(bytes) {
 	if (!bytes || bytes === 0) return '0 B';
@@ -499,17 +485,23 @@ function formatSize(bytes) {
 function getFileIcon(filename) {
 	const ext = (filename || '').split('.').pop().toLowerCase();
 	const icons = {
+		// Документы
 		pdf: '📕', doc: '📘', docx: '📘', txt: '📝', rtf: '📝',
 		odt: '📘', xls: '📊', xlsx: '📊', ppt: '📙', pptx: '📙',
+		// Изображения
 		jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️',
 		svg: '🖼️', webp: '🖼️', ico: '🖼️', bmp: '🖼️',
 		heic: '🖼️', heif: '🖼️', tiff: '🖼️',
+		// Видео
 		mp4: '🎬', avi: '🎬', mov: '🎬', mkv: '🎬',
 		webm: '🎬', flv: '🎬', wmv: '🎬', m4v: '🎬',
+		// Аудио
 		mp3: '🎵', wav: '🎵', flac: '🎵', ogg: '🎵',
 		aac: '🎵', m4a: '🎵', wma: '🎵', opus: '🎵',
+		// Архивы
 		zip: '📦', rar: '📦', tar: '📦', gz: '📦',
 		'7z': '📦', bz2: '📦', xz: '📦',
+		// Код
 		js: '⚡', ts: '⚡', jsx: '⚡', tsx: '⚡',
 		go: '🐹', py: '🐍', rb: '💎', php: '🐘',
 		java: '☕', c: '⚙️', cpp: '⚙️', cs: '⚙️',
@@ -517,6 +509,7 @@ function getFileIcon(filename) {
 		json: '📋', xml: '📋', yaml: '📋', yml: '📋',
 		md: '📝', sql: '🗃️', sh: '💻', bat: '💻',
 		rs: '🦀', swift: '🐦', kt: '🎯', dart: '🎯',
+		// Прочее
 		exe: '⚙️', dmg: '💿', iso: '💿', apk: '📱',
 		ipa: '📱', deb: '📦', rpm: '📦',
 	};
@@ -568,13 +561,10 @@ document.addEventListener('touchend', () => {
 
 // ========== ЗАПУСК ==========
 loadFiles(true);
-startPolling();
 
+// Обновляем при возврате на вкладку
 document.addEventListener('visibilitychange', () => {
-	if (document.hidden) {
-		stopPolling();
-	} else {
+	if (!document.hidden) {
 		loadFiles();
-		startPolling();
 	}
 });
